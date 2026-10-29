@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>두더지 잡기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap">
+<style>
+/* Layout: one-screen meadow — score bar on top, 3x3 dirt holes in a square board, start/end overlay on the board */
+:root {
+  --sky: #bfe3f2;
+  --grass: #6fbf4a;
+  --grass-dark: #4f9a32;
+  --dirt: #6b4226;
+  --dirt-deep: #3a2314;
+  --mole: #8a5a3b;
+  --mole-belly: #e8c9a0;
+  --ink: #2b2118;
+  --paper: #fff8e6;
+  --gold: #f2b705;
+  --hit: #e2463a;
+  --display: "Jua", "Gowun Dodum", system-ui, sans-serif;
+  --body: "Gowun Dodum", system-ui, sans-serif;
+  color-scheme: light;
+}
+html, body { height: 100%; }
+body {
+  background: linear-gradient(var(--sky) 0 18%, var(--grass) 18% 100%);
+  color: var(--ink);
+  font-family: var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px;
+  box-sizing: border-box;
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
+}
+.wrap {
+  height: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  display: flex; flex-direction: column; gap: 14px;
+}
+h1 {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(28px, 7vw, 40px);
+  margin: 0; text-align: center;
+  color: var(--dirt-deep);
+  letter-spacing: 1px;
+}
+.hud {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+}
+.stat {
+  background: var(--paper);
+  border: 3px solid var(--dirt-deep);
+  border-radius: 14px;
+  padding: 6px 8px;
+  text-align: center;
+}
+.stat span { display: block; font-size: 12px; letter-spacing: .08em; color: var(--dirt); }
+.stat b { font-family: var(--display); font-weight: 400; font-size: 26px; font-variant-numeric: tabular-nums; }
+.stat.low b { color: var(--hit); }
+.timebar { height: 10px; background: var(--grass-dark); border-radius: 6px; overflow: hidden; border: 2px solid var(--dirt-deep); }
+.timebar i { display: block; height: 100%; width: 100%; background: var(--gold); transform-origin: left; }
+
+.board-area { flex: 1; min-height: 0; display: grid; place-items: center; }
+.board {
+  position: relative;
+  width: min(100%, 480px, calc(100vh - 230px));
+  aspect-ratio: 1; max-width: 100%;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4%;
+  padding: 4%; box-sizing: border-box;
+  background: var(--grass-dark);
+  border-radius: 24px;
+  touch-action: manipulation;
+}
+.hole {
+  position: relative; overflow: hidden;
+  border: 0; padding: 0; background: none; cursor: pointer;
+  border-radius: 0 0 50% 50% / 0 0 30% 30%;
+}
+.hole:focus-visible { outline: 3px solid var(--paper); outline-offset: 2px; }
+.hole::before { /* dirt opening */
+  content: ""; position: absolute; left: 6%; right: 6%; bottom: 6%; height: 30%;
+  background: radial-gradient(ellipse at 50% 40%, var(--dirt-deep) 0 55%, var(--dirt) 56% 100%);
+  border-radius: 50%;
+}
+.mole {
+  position: absolute; left: 18%; right: 18%; bottom: 14%; height: 72%;
+  transform: translateY(105%);
+  transition: transform .12s ease-out;
+  pointer-events: none;
+}
+.hole.up .mole { transform: translateY(0); }
+.hole.whacked .mole { transform: translateY(30%) scaleY(.8); transition: transform .08s; }
+.mole .body {
+  position: absolute; inset: 0;
+  background: var(--mole);
+  border-radius: 50% 50% 20% 20% / 60% 60% 10% 10%;
+}
+.mole .belly {
+  position: absolute; left: 22%; right: 22%; bottom: 0; height: 40%;
+  background: var(--mole-belly); border-radius: 50% 50% 0 0;
+}
+.mole .eye { position: absolute; top: 28%; width: 11%; aspect-ratio: 1; background: var(--ink); border-radius: 50%; }
+.mole .eye.l { left: 28%; } .mole .eye.r { right: 28%; }
+.hole.whacked .eye { height: 3px; aspect-ratio: auto; top: 32%; border-radius: 2px; }
+.mole .nose { position: absolute; top: 40%; left: 40%; width: 20%; height: 12%; background: #e98a8a; border-radius: 50%; }
+.mole .helmet { display: none; }
+.hole.gold .body { background: var(--gold); }
+.hole.gold .mole::after { content: "★"; position: absolute; top: -2%; left: 0; right: 0; text-align: center; color: var(--paper); font-size: 1.1em; }
+.hole::after { /* front rim covers mole bottom */
+  content: ""; position: absolute; left: 4%; right: 4%; bottom: 0; height: 14%;
+  background: var(--grass-dark); border-radius: 0 0 40% 40%;
+}
+.pop {
+  position: absolute; left: 50%; top: 10%; transform: translateX(-50%);
+  font-family: var(--display); font-size: clamp(18px, 5vw, 28px);
+  color: var(--paper); text-shadow: 0 2px 0 var(--dirt-deep);
+  pointer-events: none; animation: rise .6s ease-out forwards; z-index: 2;
+}
+@keyframes rise { to { transform: translate(-50%, -60%); opacity: 0; } }
+
+.overlay {
+  position: absolute; inset: 0; z-index: 5;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  background: color-mix(in srgb, var(--dirt-deep) 72%, transparent);
+  border-radius: 24px; color: var(--paper); text-align: center; padding: 16px;
+}
+.overlay h2 { font-family: var(--display); font-weight: 400; font-size: clamp(26px, 7vw, 38px); margin: 0; text-wrap: balance; }
+.overlay p { margin: 0; font-size: 15px; line-height: 1.5; max-width: 30ch; }
+.btn {
+  font-family: var(--display); font-size: 22px;
+  background: var(--gold); color: var(--ink);
+  border: 3px solid var(--ink); border-radius: 999px;
+  padding: 10px 30px; cursor: pointer;
+  box-shadow: 0 4px 0 var(--ink);
+}
+.btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+.btn:focus-visible { outline: 3px solid var(--paper); outline-offset: 3px; }
+.foot { text-align: center; font-size: 13px; color: var(--dirt-deep); }
+@media (prefers-reduced-motion: reduce) {
+  .mole, .hole.whacked .mole { transition: none; }
+  .pop { animation-duration: .01s; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>두더지 잡기</h1>
+  <div class="hud">
+    <div class="stat"><span>점수</span><b id="score">0</b></div>
+    <div class="stat" id="timeStat"><span>남은 시간</span><b id="time">30</b></div>
+    <div class="stat"><span>최고 기록</span><b id="best">0</b></div>
+  </div>
+  <div class="timebar"><i id="bar"></i></div>
+  <div class="board-area">
+    <div class="board" id="board">
+      <div class="overlay" id="overlay">
+        <h2 id="ovTitle">두더지를 잡아라!</h2>
+        <p id="ovText">30초 동안 튀어나오는 두더지를 눌러 잡으세요. 갈색 두더지는 1점, 황금 두더지는 3점이에요.</p>
+        <button class="btn" id="startBtn" type="button">시작하기</button>
+      </div>
+    </div>
+  </div>
+  <div class="foot">시간이 갈수록 두더지가 빨라져요</div>
+</div>
+
+<script>
+(() => {
+  const GAME_TIME = 30;
+  const board = document.getElementById('board');
+  const scoreEl = document.getElementById('score');
+  const timeEl = document.getElementById('time');
+  const bestEl = document.getElementById('best');
+  const bar = document.getElementById('bar');
+  const timeStat = document.getElementById('timeStat');
+  const overlay = document.getElementById('overlay');
+  const ovTitle = document.getElementById('ovTitle');
+  const ovText = document.getElementById('ovText');
+  const startBtn = document.getElementById('startBtn');
+
+  let best = 0;
+  try { best = parseInt(localStorage.getItem('mole-best') || '0', 10) || 0; } catch (e) {}
+  bestEl.textContent = best;
+
+  const holes = [];
+  for (let i = 0; i < 9; i++) {
+    const h = document.createElement('button');
+    h.className = 'hole'; h.type = 'button'; h.id = 'hole' + i;
+    h.setAttribute('aria-label', '구멍 ' + (i + 1));
+    h.innerHTML = '<div class="mole"><div class="body"></div><div class="belly"></div><div class="eye l"></div><div class="eye r"></div><div class="nose"></div></div>';
+    h.addEventListener('pointerdown', e => { e.preventDefault(); whack(i); });
+    h.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); whack(i); } });
+    board.insertBefore(h, overlay);
+    holes.push({ el: h, up: false, gold: false, timer: null });
+  }
+
+  let score = 0, running = false, endAt = 0, spawnTimer = null, raf = null;
+
+  function elapsedRatio() { return 1 - Math.max(0, endAt - performance.now()) / (GAME_TIME * 1000); }
+
+  function spawn() {
+    if (!running) return;
+    const free = holes.map((h, i) => i).filter(i => !holes[i].up);
+    if (free.length) {
+      const i = free[Math.floor(Math.random() * free.length)];
+      const h = holes[i];
+      const r = elapsedRatio();
+      const stay = 950 - r * 500 + Math.random() * 250;   // 950ms → 450ms
+      h.up = true; h.gold = Math.random() < 0.12;
+      h.el.classList.toggle('gold', h.gold);
+      h.el.classList.remove('whacked');
+      h.el.classList.add('up');
+      h.timer = setTimeout(() => hide(i), stay);
+    }
+    const r = elapsedRatio();
+    const next = 700 - r * 380 + Math.random() * 200;      // spawns get faster
+    spawnTimer = setTimeout(spawn, next);
+  }
+
+  function hide(i) {
+    const h = holes[i];
+    clearTimeout(h.timer);
+    h.up = false;
+    h.el.classList.remove('up');
+  }
+
+  function whack(i) {
+    const h = holes[i];
+    if (!running || !h.up || h.el.classList.contains('whacked')) return;
+    const pts = h.gold ? 3 : 1;
+    score += pts;
+    scoreEl.textContent = score;
+    h.el.classList.add('whacked');
+    const p = document.createElement('div');
+    p.className = 'pop'; p.textContent = '+' + pts;
+    h.el.appendChild(p);
+    setTimeout(() => p.remove(), 650);
+    clearTimeout(h.timer);
+    h.timer = setTimeout(() => hide(i), 220);
+    if (navigator.vibrate) { try { navigator.vibrate(15); } catch (e) {} }
+  }
+
+  function tick() {
+    const left = Math.max(0, endAt - performance.now());
+    timeEl.textContent = Math.ceil(left / 1000);
+    bar.style.transform = 'scaleX(' + (left / (GAME_TIME * 1000)) + ')';
+    timeStat.classList.toggle('low', left <= 5000);
+    if (left <= 0) return finish();
+    raf = requestAnimationFrame(tick);
+  }
+
+  function start() {
+    score = 0; scoreEl.textContent = 0;
+    holes.forEach((h, i) => hide(i));
+    overlay.hidden = true;
+    running = true;
+    endAt = performance.now() + GAME_TIME * 1000;
+    spawn();
+    tick();
+  }
+
+  function finish() {
+    running = false;
+    clearTimeout(spawnTimer);
+    cancelAnimationFrame(raf);
+    holes.forEach((h, i) => hide(i));
+    const isBest = score > best;
+    if (isBest) {
+      best = score; bestEl.textContent = best;
+      try { localStorage.setItem('mole-best', String(best)); } catch (e) {}
+    }
+    ovTitle.textContent = isBest && score > 0 ? '새 최고 기록! ' + score + '점' : '끝! ' + score + '점';
+    ovText.textContent = score >= 40 ? '두더지 사냥의 달인이에요.' : score >= 20 ? '꽤 잘했어요. 한 번 더 해볼까요?' : '두더지가 너무 빨랐나요? 다시 도전해 보세요.';
+    startBtn.textContent = '다시 하기';
+    overlay.hidden = false;
+    startBtn.focus();
+  }
+
+  startBtn.addEventListener('click', start);
+  document.addEventListener('visibilitychange', () => { if (document.hidden && running) finish(); });
+})();
+</script>
+</body>
+</html>
